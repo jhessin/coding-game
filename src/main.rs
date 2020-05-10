@@ -144,14 +144,10 @@ impl GameBoard {
       let updated = PacMan::new(id, pos, type_id);
       if mine == 1 {
         let entry = self.my_pacmen.entry(id).or_insert(updated);
-        let new =
-          entry.update(pos, type_id, speed_turns_left, ability_cooldown);
-        self.my_pacmen.insert(id, new);
+        entry.update(pos, type_id, speed_turns_left, ability_cooldown);
       } else {
         let entry = self.their_pacmen.entry(id).or_insert(updated);
-        let new =
-          entry.update(pos, type_id, speed_turns_left, ability_cooldown);
-        self.their_pacmen.insert(id, new);
+        entry.update(pos, type_id, speed_turns_left, ability_cooldown);
       }
     }
     let mut input_line = String::new();
@@ -173,13 +169,13 @@ impl GameBoard {
   fn look_at(&self, pos: Pos) -> LookResult {
     for (_, man) in &self.their_pacmen {
       if man.pos == pos {
-        return LookResult::PacMan(*man);
+        return LookResult::TheirPac(*man);
       }
     }
 
     for (_, man) in &self.my_pacmen {
       if man.pos == pos {
-        return LookResult::PacMan(*man);
+        return LookResult::MyPac(*man);
       }
     }
 
@@ -194,73 +190,86 @@ impl GameBoard {
     }
   }
 
-  fn find_pellet(&mut self) -> String {
-    let mut result = vec![];
-    let mut updated = self.my_pacmen.clone();
-    for (_, man) in &self.my_pacmen {
-      let mut i = 1;
-      let man = loop {
-        let man = if let Some(m) = updated.get(&man.id) { *m } else { *man };
-        let pos = man.look_forward(i);
-        let lr = self.look_at(pos);
-        match lr {
-          LookResult::Pellet(_) => {
-            eprintln!("Found a pellet at {}", pos);
-          }
-          LookResult::Floor => {
-            eprintln!("Found a floor at {}", pos);
-          }
-          LookResult::Wall => {
-            eprintln!("Found a wall at {}", pos);
-            if i == 1 {
-              let man = man.turn_left();
-              updated.insert(man.id, man);
-              break man;
-            }
-            break man;
-          }
-          LookResult::PacMan(p) => {
-            // is this my pacman?
-            if self.my_pacmen.contains_key(&p.id) {
-              // is it heading this direction?
-              if p.direction.reversed() == man.direction {
-                // turn right and try again
-                let man = man.turn_left();
-                updated.insert(man.id, man);
-                i = 1;
-                continue;
-              }
-            } else {
-              // NOT MY PACMAN - Can I Eat him?
-              if man.type_id.beats(p.type_id) {
-                result.push(Command::Speed(man));
-                break man;
-              } else if man.ability_cooldown == 0 {
-                result.push(Command::Switch(man, p.type_id.beat_it()));
-                break man;
-              } else {
-                // turn and look somewhere else
-                let man = man.turn_left();
-                updated.insert(man.id, man);
-                i = 1;
-                continue;
-              }
-            }
+  fn look_ahead(&self, id: u32) -> Option<LookResult> {
+    let man =
+      if let Some(man) = self.my_pacmen.get(&id) { man } else { return None };
+    for i in 1..35 {
+      let pos = man.look_forward(i, self.width, self.height);
+      let result = self.look_at(pos);
+      match result {
+        LookResult::Pellet(_) => {}
+        LookResult::Floor => {}
+        LookResult::Wall => {
+          if i == 1 {
+            return Some(result);
+          } else {
+            break;
           }
         }
-
-        // if for some reason we don't hit a wall or anything we need to break the loop
-        if i >= 35 {
-          eprintln!("Got to max distance without hitting a wall!");
-          break man;
-        }
-        i += 1;
-      };
-
-      result.push(man.forward());
+        LookResult::MyPac(_) => return Some(result),
+        LookResult::TheirPac(_) => return Some(result),
+      }
     }
 
-    self.my_pacmen = updated;
+    let pos = man.look_forward(1, self.width, self.height);
+    Some(self.look_at(pos))
+  }
+
+  fn get_commands(&mut self) -> String {
+    let mut result = vec![];
+    let keys = self.my_pacmen.keys().into_iter().cloned().collect::<Vec<_>>();
+    for i in keys {
+      let mut turns = 0;
+      loop {
+        if turns > 4 {
+          break;
+        }
+        if let Some(r) = self.look_ahead(i) {
+          let mut man = self.my_pacmen.get_mut(&i).unwrap();
+          match r {
+            LookResult::Pellet(_) => {
+              eprintln!("Pellet found for pac @ {}", man.pos);
+              result.push(man.forward());
+              break;
+            }
+            LookResult::Floor => {
+              eprintln!("Floor found for pac @ {}", man.pos);
+              result.push(man.forward());
+              break;
+            }
+            LookResult::Wall => {
+              eprintln!("Wall found for pac @ {}", man.pos);
+              man.turn_left();
+              turns += 1;
+            }
+            LookResult::MyPac(other) => {
+              eprintln!("Friendly found for pac @ {}", man.pos);
+              if other.direction.reversed() == man.direction {
+                man.turn_left();
+                turns += 1;
+              } else {
+                break;
+              }
+            }
+            LookResult::TheirPac(other) => {
+              eprintln!("Enemy found for pac @ {}", man.pos);
+              // Can I beat it?
+              if man.type_id.beats(other.type_id) {
+                result.push(man.boost());
+                break;
+              } else if man.ability_cooldown == 0 {
+                result.push(man.switch(other.type_id.beat_it()));
+                break;
+              } else {
+                man.turn_left();
+                turns += 1;
+              }
+            }
+          }
+        }
+      }
+    }
+
     let result = result
       .into_iter()
       .map(|c| c.to_string())
@@ -416,73 +425,53 @@ impl PacMan {
     }
   }
 
-  fn turn_right(&self) -> PacMan {
-    let direction = match self.direction {
-      Direction::Up => Direction::Right,
-      Direction::Down => Direction::Left,
-      Direction::Left => Direction::Up,
-      Direction::Right => Direction::Down,
-    };
-
-    PacMan {
-      id: self.id,
-      pos: self.pos,
-      direction,
-      type_id: self.type_id,
-      speed_turns_left: self.speed_turns_left,
-      ability_cooldown: self.ability_cooldown,
-    }
+  fn switch(&self, type_id: PacType) -> Command {
+    Command::Switch(*self, type_id)
   }
 
-  fn turn_left(&self) -> PacMan {
-    let direction = match self.direction {
+  fn boost(&self) -> Command {
+    Command::Speed(*self)
+  }
+
+  fn turn_left(&mut self) {
+    self.direction = match self.direction {
       Direction::Up => Direction::Left,
       Direction::Down => Direction::Right,
       Direction::Left => Direction::Down,
       Direction::Right => Direction::Up,
     };
-
-    PacMan {
-      id: self.id,
-      pos: self.pos,
-      direction,
-      type_id: self.type_id,
-      speed_turns_left: self.speed_turns_left,
-      ability_cooldown: self.ability_cooldown,
-    }
   }
 
   fn update(
-    &self,
+    &mut self,
     pos: Pos,
     pac_type: PacType,
     speed_turns_left: u32,
     cooldown: u32,
-  ) -> Self {
-    let type_id = pac_type;
-    let ability_cooldown = cooldown;
-    PacMan {
-      id: self.id,
-      pos,
-      direction: self.direction,
-      type_id,
-      speed_turns_left,
-      ability_cooldown,
-    }
+  ) {
+    self.pos = pos;
+    self.type_id = pac_type;
+    self.speed_turns_left = speed_turns_left;
+    self.ability_cooldown = cooldown;
   }
 
-  fn look_forward(&self, dist: u32) -> Pos {
+  fn look_forward(&self, dist: u32, width: u32, height: u32) -> Pos {
+    let x = self.pos.x;
+    let y = self.pos.y;
     match self.direction {
-      Direction::Up => Pos {
-        x: self.pos.x,
-        y: if self.pos.y >= dist { self.pos.y - dist } else { 0 },
+      Direction::Up => {
+        Pos { x, y: if y >= dist { y - dist } else { height - (dist - y) } }
+      }
+      Direction::Down => Pos {
+        x,
+        y: if y + dist > height { y + dist - height } else { y + dist },
       },
-      Direction::Down => Pos { x: self.pos.x, y: self.pos.y + dist },
-      Direction::Left => Pos {
-        x: if self.pos.x >= dist { self.pos.x - dist } else { 0 },
-        y: self.pos.y,
-      },
-      Direction::Right => Pos { x: self.pos.x + dist, y: self.pos.y },
+      Direction::Left => {
+        Pos { x: if x >= dist { x - dist } else { width - (dist - x) }, y }
+      }
+      Direction::Right => {
+        Pos { x: if x + dist > width { x + dist - width } else { x + dist }, y }
+      }
     }
   }
 }
@@ -492,7 +481,8 @@ enum LookResult {
   Pellet(u32),
   Floor,
   Wall,
-  PacMan(PacMan),
+  MyPac(PacMan),
+  TheirPac(PacMan),
 }
 /**
  * Grab the pellets as fast as you can!
@@ -507,6 +497,6 @@ fn main() {
     // Write an action using println!("message...");
     // To debug: eprintln!("Debug message...");
 
-    println!("{}", game.find_pellet()); // MOVE <pacId> <x> <y>
+    println!("{}", game.get_commands()); // MOVE <pacId> <x> <y>
   }
 }
