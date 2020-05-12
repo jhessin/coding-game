@@ -4,18 +4,46 @@
 STDOUT.sync = true # DO NOT REMOVE
 # Grab the pellets as fast as you can!
 
+## A position
+class Position
+  attr_accessor :x, :y
+  def initialize(x, y) # rubocop:disable Naming/MethodParameterName
+    @x = x
+    @y = y
+  end
+
+  def distance_to(other)
+    dx = (@x - other.x).abs
+    dy = (@y - other.y).abs
+
+    c_squared = dx**2 + dy**2
+
+    Math.sqrt(c_squared).round
+  end
+
+  def closest(others)
+    closest = others[0]
+
+    others.each do |pos|
+      closest = pos if distance_to(pos) < distanceTo(closest)
+    end
+    closest
+  end
+end
+
 ## A Pellet with it's info
 class Pellet
-  attr_reader :x, :y, :value
+  attr_reader :pos, :value
 
   def initialize
-    @x, @y, @value = gets.split(' ').collect(&:to_i)
+    x, y, @value = gets.split(' ').collect(&:to_i)
+    @pos = Position.new x, y
   end
 end
 
 ## A PacMan with all it's info
 class PacMan
-  attr_reader :x, :y, :pac_id,
+  attr_reader :pos, :pac_id,
               :mine, :type_id, :speed_turns_left, :ability_cooldown
 
   def initialize
@@ -23,8 +51,7 @@ class PacMan
       type_id, speed_turns_left, ability_cooldown = gets.split(' ')
     @pac_id = pac_id.to_i # unique to player id
     @mine = mine.to_i == 1 # is this pac mine
-    @x = x.to_i
-    @y = y.to_i
+    @pos = Position.new(x.to_i, y.to_i)
     @type_id = if type_id == 'ROCK'
                  :rock
                elsif type_id == 'PAPER'
@@ -44,56 +71,113 @@ class GameBoard
   attr_reader :height, :width
 
   def initialize
+    # width: size of the grid
+    # height: top left corner is (x=0, y=0)
     @height, @width = gets.split(' ').collect(&:to_i)
-    @board = [[]]
+    @board = {}
     y = 0
     @height.times do
       # one line of the grid: space " " is floor, pound "#" is wall
       row = gets.chomp
 
       row.each_char.with_index do |val, x|
-        @board[x][y] = if val == '#'
-                         :wall
-                       else
-                         :floor
-                       end
+        pos = Position.new(x, y)
+        @board[pos] = if val == '#'
+                        :wall
+                      else
+                        :floor
+                      end
       end
 
       y += 1
     end
   end
 
+  def get_pos_info(pos)
+    if @my_pacmen[pos]
+      :friendly
+    elsif @other_pacmen[pos]
+      :enemy
+    else
+      @board[pos]
+    end
+  end
+
   def update
     @my_score, @opponent_score = gets.split(' ').collect(&:to_i)
     visible_pac_count = gets.to_i # all your pacs and enemy pacs in sight
-    @my_pacmen = []
-    @other_pacmen = []
+    @my_pacmen = {}
+    @other_pacmen = {}
     visible_pac_count.times do
       pacman = PacMan.new
       if pacman.mine
-        @my_pacmen.push pacman
+        @my_pacmen[pacman.pos] = pacman
       else
-        @other_pacmen.push pacman
+        @other_pacmen[pacman.pos] = pacman
       end
     end
     visible_pellet_count = gets.to_i # all pellets in sight
-    @pellets = []
+    @pellets = {}
     visible_pellet_count.times do
       # value: amount of points this pellet is worth
-      @pellets.push(Pellet.new)
+      pellet = Pellet.new
+      @pellets[pellet.pos] = pellet
     end
+  end
+
+  def up(pos, dist)
+    y =
+      if (pos.y - dist).negative?
+        @height - (dist - pos.y)
+      else
+        pos.y - dist
+      end
+
+    Position.new(pos.x, y)
+  end
+
+  def down(pos, dist)
+    y = if pos.y + dist > @height
+          dist - pos.y
+        else
+          pos.y + dist
+        end
+
+    Position.new(pos.x, y)
+  end
+
+  def left(pos, dist)
+    x =
+      if (pos.x - dist).negative?
+        @width - (dist - pos.x)
+      else
+        pos.x - dist
+      end
+
+    Position.new(x, pos.y)
+  end
+
+  def right(pos, dist)
+    x = if pos.x + dist > @width
+          dist - pos.x
+        else
+          pos.x + dist
+        end
+    Position.new(x, pos.y)
   end
 end
 
-# width: size of the grid
-# height: top left corner is (x=0, y=0)
-board = GameBoard.new
+def main
+  board = GameBoard.new
 
-# game loop
-loop do
-  board.update
-  # Write an action using puts
-  # To debug: STDERR.puts "Debug messages..."
+  # game loop
+  loop do
+    board.update
+    # Write an action using puts
+    # To debug: STDERR.puts "Debug messages..."
 
-  puts 'MOVE 0 15 10' # MOVE <pacId> <x> <y>
+    puts 'MOVE 0 15 10' # MOVE <pacId> <x> <y>
+  end
 end
+
+main
