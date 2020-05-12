@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/spring_coding_challenge.iml" filepath="$PROJECT_DIR$/spring_coding_challenge.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/spring-coding-challenge.iml" filepath="$PROJECT_DIR$/.idea/spring-coding-challenge.iml" />
     </modules>
   </component>
 </project>
