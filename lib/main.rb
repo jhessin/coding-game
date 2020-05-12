@@ -6,7 +6,8 @@ STDOUT.sync = true # DO NOT REMOVE
 
 ## A position
 class Position
-  attr_accessor :x, :y
+  attr_reader :x, :y
+
   def initialize(x, y) # rubocop:disable Naming/MethodParameterName
     @x = x
     @y = y
@@ -64,12 +65,25 @@ class PacMan
   end
 end
 
+## Look Result info
+class LookResult
+  attr_reader :score, :distance, :enemies, :friends
+
+  def initialize(opts = {
+    score: 0,
+    distance: 0,
+    enemies: [],
+    friends: []
+  })
+    @score = opts.score
+    @distance = opts.distance
+    @enemies = opts.enemies
+    @friends = opts.friends
+  end
+end
+
 ## The game board
 class GameBoard
-  # change scope to public
-
-  attr_reader :height, :width
-
   def initialize
     # width: size of the grid
     # height: top left corner is (x=0, y=0)
@@ -82,11 +96,12 @@ class GameBoard
 
       row.each_char.with_index do |val, x|
         pos = Position.new(x, y)
-        @board[pos] = if val == '#'
-                        :wall
-                      else
-                        :floor
-                      end
+        @board[pos] =
+          if val == '#'
+            :wall
+          else
+            :floor
+          end
       end
 
       y += 1
@@ -98,6 +113,8 @@ class GameBoard
       :friendly
     elsif @other_pacmen[pos]
       :enemy
+    elsif @pellets[pos]
+      @pellets[pos]
     else
       @board[pos]
     end
@@ -125,7 +142,7 @@ class GameBoard
     end
   end
 
-  def up(pos, dist)
+  def up(pos, dist = 1)
     y =
       if (pos.y - dist).negative?
         @height - (dist - pos.y)
@@ -136,7 +153,7 @@ class GameBoard
     Position.new(pos.x, y)
   end
 
-  def down(pos, dist)
+  def down(pos, dist = 1)
     y = if pos.y + dist > @height
           dist - pos.y
         else
@@ -146,7 +163,7 @@ class GameBoard
     Position.new(pos.x, y)
   end
 
-  def left(pos, dist)
+  def left(pos, dist = 1)
     x =
       if (pos.x - dist).negative?
         @width - (dist - pos.x)
@@ -157,13 +174,67 @@ class GameBoard
     Position.new(x, pos.y)
   end
 
-  def right(pos, dist)
+  def right(pos, dist = 1)
     x = if pos.x + dist > @width
           dist - pos.x
         else
           pos.x + dist
         end
     Position.new(x, pos.y)
+  end
+
+  def look_up(pos)
+    look(pos)
+  end
+
+  def look_down(pos)
+    look(pos, -> { pos = down(pos) })
+  end
+
+  def look_left(pos)
+    look(pos, -> { pos = left(pos) })
+  end
+
+  def look_right(pos)
+    look(pos, -> { pos = right(pos) })
+  end
+
+  def look(pos, update_pos = lambda {
+    pos = up(pos)
+  })
+    update_pos.call
+    result = get_pos_info(pos)
+    distance = 0
+    score = 0
+    friends = []
+    enemies = []
+
+    while result != :wall
+      if result.class == Pellet
+        score += result.value
+      elsif result == :friendly
+        friends.push @my_pacmen[pos]
+      elsif result == :enemy
+        enemies.push @other_pacmen[pos]
+      end
+
+      # update loop
+      update_pos.call
+      result = get_pos_info(pos)
+      distance += 1
+    end
+
+    LookResult.new({
+                     distance: distance, score: score, friends: friends, enemies: enemies
+                   })
+  end
+
+  def command
+    @my_pacmen.each do |man|
+    end
+
+    # Placeholder
+    puts 'MOVE 0 15 10' # MOVE <pacId> <x> <y>
   end
 end
 
@@ -176,7 +247,7 @@ def main
     # Write an action using puts
     # To debug: STDERR.puts "Debug messages..."
 
-    puts 'MOVE 0 15 10' # MOVE <pacId> <x> <y>
+    board.command
   end
 end
 
