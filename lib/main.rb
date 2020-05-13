@@ -48,8 +48,7 @@ class PacMan
               :mine, :type_id, :speed_turns_left, :ability_cooldown
 
   def initialize
-    pac_id, mine, x, y,
-      type_id, speed_turns_left, ability_cooldown = gets.split(' ')
+    pac_id, mine, x, y, type_id, speed_turns_left, ability_cooldown = gets.split(' ')
     @pac_id = pac_id.to_i # unique to player id
     @mine = mine.to_i == 1 # is this pac mine
     @pos = Position.new(x.to_i, y.to_i)
@@ -230,11 +229,14 @@ class GameBoard
   end
 
   def command
-    @my_pacmen.each do |man|
+    commands = []
+    @my_pacmen.each do |pos, man|
+      warn "#{man.pac_id} @ (#{pos.x}, #{pos.y})"
+      # Placeholder
+      commands.push "MOVE #{man.pac_id} 15 10"
     end
 
-    # Placeholder
-    puts 'MOVE 0 15 10' # MOVE <pacId> <x> <y>
+    puts commands.join(' | ')
   end
 end
 
