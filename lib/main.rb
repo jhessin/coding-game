@@ -75,7 +75,7 @@ end
 
 ## Look Result info
 class LookResult
-  attr_reader :score, :distance, :enemies, :friends
+  attr_reader :pos, :score, :distance, :enemies, :friends
 
   def initialize(opts = {
     score: 0,
@@ -83,6 +83,7 @@ class LookResult
     enemies: [],
     friends: []
   })
+    @pos = opts[:pos]
     @score = opts[:score]
     @distance = opts[:distance]
     @enemies = opts[:enemies]
@@ -225,7 +226,7 @@ class GameBoard
     friends = []
     enemies = []
 
-    while result != :wall && distance < @width
+    while result != :wall 
       warn "Found #{result.to_s} @ #{pos}"
       if result.class == Pellet
         score += result.value
@@ -242,7 +243,7 @@ class GameBoard
     end
 
     LookResult.new({
-                     distance: distance, score: score, friends: friends, enemies: enemies
+                    pos: pos, distance: distance, score: score, friends: friends, enemies: enemies
                    })
   end
 
@@ -260,19 +261,19 @@ class GameBoard
         up.score > left.score &&
         up.score > right.score &&
         up.enemies.length == 0
-        commands.push "MOVE #{man.pac_id} #{up(pos)}"
+        commands.push "MOVE #{man.pac_id} #{up.pos}"
       elsif down.score > up.score &&
         down.score > left.score &&
         down.score > right.score &&
         down.enemies.length == 0
-        commands.push "MOVE #{man.pac_id} #{down pos}"
+        commands.push "MOVE #{man.pac_id} #{down.pos}"
       elsif right.score > left.score &&
         right.score > up.score &&
         right.score > down.score &&
         right.enemies.length == 0
-        commands.push "MOVE #{man.pac_id} #{right pos}"
+        commands.push "MOVE #{man.pac_id} #{right.pos}"
       else
-        commands.push "MOVE #{man.pac_id} #{left pos}"
+        commands.push "MOVE #{man.pac_id} #{left.pos}"
       end
     end
 
@@ -294,4 +295,3 @@ def main
 end
 
 main
-
