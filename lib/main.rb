@@ -13,6 +13,10 @@ class Position
     @y = y
   end
 
+  def to_s
+    "#{@x} #{@y}"
+  end
+
   def distance_to(other)
     dx = (@x - other.x).abs
     dy = (@y - other.y).abs
@@ -37,7 +41,9 @@ class Pellet
   attr_reader :pos, :value
 
   def initialize
-    x, y, @value = gets.split(' ').collect(&:to_i)
+    input = gets.chomp
+    warn "Getting pellet position: #{input}"
+    x, y, @value = input.split(' ').collect(&:to_i)
     @pos = Position.new x, y
   end
 end
@@ -48,7 +54,10 @@ class PacMan
               :mine, :type_id, :speed_turns_left, :ability_cooldown
 
   def initialize
-    pac_id, mine, x, y, type_id, speed_turns_left, ability_cooldown = gets.split(' ')
+    input = gets.chomp
+    warn 'Pacman input:'
+    warn input
+    pac_id, mine, x, y, type_id, speed_turns_left, ability_cooldown = input.split(' ')
     @pac_id = pac_id.to_i # unique to player id
     @mine = mine.to_i == 1 # is this pac mine
     @pos = Position.new(x.to_i, y.to_i)
@@ -74,10 +83,10 @@ class LookResult
     enemies: [],
     friends: []
   })
-    @score = opts.score
-    @distance = opts.distance
-    @enemies = opts.enemies
-    @friends = opts.friends
+    @score = opts[:score]
+    @distance = opts[:distance]
+    @enemies = opts[:enemies]
+    @friends = opts[:friends]
   end
 end
 
@@ -86,12 +95,16 @@ class GameBoard
   def initialize
     # width: size of the grid
     # height: top left corner is (x=0, y=0)
-    @height, @width = gets.split(' ').collect(&:to_i)
+    input = gets.chomp
+    warn 'Initializing board: width + height'
+    warn input
+    @width, @height = input.split(' ').collect(&:to_i)
     @board = {}
-    y = 0
-    @height.times do
+    @height.times do |y|
       # one line of the grid: space " " is floor, pound "#" is wall
       row = gets.chomp
+      warn "board line #{y}"
+      warn row
 
       row.each_char.with_index do |val, x|
         pos = Position.new(x, y)
@@ -102,25 +115,26 @@ class GameBoard
             :floor
           end
       end
-
-      y += 1
     end
   end
 
   def get_pos_info(pos)
     if @my_pacmen[pos]
-      :friendly
+      return :friendly
     elsif @other_pacmen[pos]
-      :enemy
+      return :enemy
     elsif @pellets[pos]
-      @pellets[pos]
+      return @pellets[pos]
     else
-      @board[pos]
+      return @board[pos]
     end
   end
 
   def update
-    @my_score, @opponent_score = gets.split(' ').collect(&:to_i)
+    input = gets.chomp
+    warn 'updating turn'
+    warn input
+    @my_score, @opponent_score = input.split(' ').collect(&:to_i)
     visible_pac_count = gets.to_i # all your pacs and enemy pacs in sight
     @my_pacmen = {}
     @other_pacmen = {}
@@ -132,7 +146,10 @@ class GameBoard
         @other_pacmen[pacman.pos] = pacman
       end
     end
-    visible_pellet_count = gets.to_i # all pellets in sight
+    input = gets.chomp
+    warn 'getting pellet count'
+    warn input
+    visible_pellet_count = input.to_i # all pellets in sight
     @pellets = {}
     visible_pellet_count.times do
       # value: amount of points this pellet is worth
@@ -208,7 +225,8 @@ class GameBoard
     friends = []
     enemies = []
 
-    while result != :wall
+    while result != :wall && distance < @width
+      warn "Found #{result.to_s} @ #{pos}"
       if result.class == Pellet
         score += result.value
       elsif result == :friendly
@@ -232,8 +250,30 @@ class GameBoard
     commands = []
     @my_pacmen.each do |pos, man|
       warn "#{man.pac_id} @ (#{pos.x}, #{pos.y})"
-      # Placeholder
-      commands.push "MOVE #{man.pac_id} 15 10"
+      up = look_up(pos)
+      down = look_down(pos)
+      right = look_right(pos)
+      left = look_left(pos)
+
+      # find the greatest score
+      if up.score > down.score &&
+        up.score > left.score &&
+        up.score > right.score &&
+        up.enemies.length == 0
+        commands.push "MOVE #{man.pac_id} #{up(pos)}"
+      elsif down.score > up.score &&
+        down.score > left.score &&
+        down.score > right.score &&
+        down.enemies.length == 0
+        commands.push "MOVE #{man.pac_id} #{down pos}"
+      elsif right.score > left.score &&
+        right.score > up.score &&
+        right.score > down.score &&
+        right.enemies.length == 0
+        commands.push "MOVE #{man.pac_id} #{right pos}"
+      else
+        commands.push "MOVE #{man.pac_id} #{left pos}"
+      end
     end
 
     puts commands.join(' | ')
@@ -254,3 +294,4 @@ def main
 end
 
 main
+
