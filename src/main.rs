@@ -185,6 +185,11 @@ struct Path {
   data: Vec<Pos>,
 }
 
+enum PathResult {
+  Partial(Path, Pos),
+  Complete(Vec<Path>),
+}
+
 impl Path {
   pub fn new_with_data(data: Vec<Pos>) -> Self {
     Self { data }
@@ -208,35 +213,46 @@ impl Path {
     self.get_adjacent(pos).len()
   }
 
-  pub fn follow_path(&self, pos: Pos) -> Path {
+  pub fn follow_path(&self, pos: Pos, exclude: &[Pos]) -> PathResult {
     let mut path = Path::new();
-    if !self.contains(&pos) || self.len() == 0 || !self.has_adjacent(pos) {
-      return path;
+    let mut paths = vec![];
+    if !self.contains(&pos)
+      || self.len() == 0
+      || !self.has_adjacent(pos)
+      || exclude.contains(&pos)
+    {
+      return PathResult::Partial(path, pos);
     }
     let mut index = 0;
+    let mut exclude = exclude.to_owned();
+    exclude.push(pos);
     while index < self.data.len() {
-      path += self.follow_path(*self.get_adjacent(pos).first().unwrap());
+      for i in self.get_adjacent(pos).iter() {
+        if exclude.contains(i) {
+          continue;
+        }
+        if let PathResult::Partial(mut p, pos) = self.follow_path(*i, &exclude)
+        {
+          path.append(&mut p);
+          exclude.push(pos);
+        }
+      }
+      paths.push(path.clone());
       index += 1;
     }
 
-    path
+    PathResult::Complete(paths)
   }
 
   pub fn get_adjacent_paths(&self) -> Vec<Path> {
-    if self.len() == 0 {
-      return vec![];
+    let exclude = vec![];
+    if let PathResult::Complete(paths) =
+      self.follow_path(self.data[0], &exclude)
+    {
+      paths
+    } else {
+      panic!("Path calculation does not complete")
     }
-    let mut index = 0;
-    let mut start = self[index];
-    let mut paths = vec![];
-    while index < self.len() {
-      for p in self.get_adjacent(start).iter() {
-        paths.push(self.follow_path(*p));
-      }
-      index += 1;
-      start = self[index];
-    }
-    paths
   }
 
   pub fn get_longest_path(&self) -> Option<Path> {
