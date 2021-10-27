@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io;
 
 macro_rules! parse_input {
@@ -9,7 +9,8 @@ macro_rules! parse_input {
   };
 }
 
-#[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+/// Indicates a position on the game board.
+#[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash, Default)]
 struct Pos(usize, usize);
 
 impl Pos {
@@ -22,9 +23,11 @@ impl Pos {
   }
 }
 
-#[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+/// Designates a Player and their symbol
+#[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash, Default)]
 struct Player(char, char);
 
+/// This is a cell in the grid - help by a Player-path, player-base, or Open
 #[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 enum Slot {
   Path(Player),
@@ -92,7 +95,8 @@ impl Slot {
   }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+/// This is the game Grid
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 struct Grid {
   data: HashMap<Pos, Slot>,
 }
@@ -113,7 +117,7 @@ impl std::ops::DerefMut for Grid {
 
 impl Grid {
   pub fn new() -> Self {
-    Grid { data: HashMap::new() }
+    Grid::default()
   }
 
   pub fn new_from(val: &str) -> Self {
@@ -129,7 +133,7 @@ impl Grid {
 
   pub fn players(&self) -> Vec<Player> {
     let mut players = vec![];
-    for v in self.data.values() {
+    for v in self.values() {
       match v {
         Slot::Path(p) => players.push(*p),
         Slot::Base(p) => players.push(*p),
@@ -140,10 +144,10 @@ impl Grid {
   }
 
   pub fn roads_for_player(&self, player: Player) -> Path {
-    let mut v = vec![];
-    for (pos, slot) in self.data.iter() {
+    let mut v = HashSet::new();
+    for (pos, slot) in self.iter() {
       if *slot == Slot::Path(player) {
-        v.push(*pos);
+        v.insert(*pos);
       }
     }
     Path::new_with_data(v)
@@ -151,7 +155,7 @@ impl Grid {
 
   pub fn height(&self) -> usize {
     let mut h = 0;
-    for key in self.data.keys() {
+    for key in self.keys() {
       if key.1 + 1 > h {
         h = key.1 + 1
       }
@@ -162,7 +166,7 @@ impl Grid {
   #[allow(dead_code)]
   pub fn width(&self) -> usize {
     let mut w = 0;
-    for key in self.data.keys() {
+    for key in self.keys() {
       if key.0 + 1 > w {
         w = key.0 + 1
       }
@@ -175,66 +179,103 @@ impl Grid {
     for (i, val) in val.chars().enumerate() {
       let slot = Slot::new(val);
       let pos = Pos(i, height);
-      self.data.insert(pos, slot);
+      self.insert(pos, slot);
     }
   }
 }
 
-#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+/// This is a collection of points that can be used as a path
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 struct Path {
-  data: Vec<Pos>,
+  data: HashSet<Pos>,
 }
 
+/// Holds the result of following a path
+#[derive(Clone, Debug, Eq, PartialEq)]
 enum PathResult {
-  Partial(Path, Pos),
+  /// This is result for a partial path traversal.
+  Partial(
+    /// The path that is being followed
+    Path,
+    /// Where we are at on the path.
+    Pos,
+  ),
+  /// This is the complete path with all branches off of it.
   Complete(Vec<Path>),
 }
 
 impl Path {
-  pub fn new_with_data(data: Vec<Pos>) -> Self {
+  /// Append the positions from one path to another.
+  /// Leaves the other Path empty.
+  pub fn append(&mut self, other: &mut Path) {
+    for pos in other.drain() {
+      self.insert(pos);
+    }
+  }
+
+  /// Initialize a new Path from a HashSet
+  pub fn new_with_data(data: HashSet<Pos>) -> Self {
     Self { data }
   }
 
+  /// A new default Path
   pub fn new() -> Self {
-    Self { data: vec![] }
+    Self::default()
   }
 
-  pub fn get_adjacent(&self, pos: Pos) -> Self {
-    let mut data = vec![];
+  /// Get any points adjacent to this one
+  pub fn get_adjacent(&self, pos: Pos, exclude: &HashSet<Pos>) -> Self {
+    let mut data = HashSet::new();
     for p in &self.data {
-      if p.adjacent(pos) {
-        data.push(*p);
+      if p.adjacent(pos) && !exclude.contains(p) {
+        data.insert(*p);
       }
     }
     Self { data }
   }
 
-  pub fn num_paths_from(&self, pos: Pos) -> usize {
-    self.get_adjacent(pos).len()
+  pub fn num_paths_from(&self, pos: Pos, exclude: &HashSet<Pos>) -> usize {
+    self.get_adjacent(pos, exclude).len()
   }
 
-  pub fn follow_path(&self, pos: Pos, exclude: &[Pos]) -> PathResult {
+  pub fn follow_path(&self, pos: Pos, exclude: &HashSet<Pos>) -> PathResult {
     let mut path = Path::new();
     let mut paths = vec![];
     if !self.contains(&pos)
       || self.len() == 0
-      || !self.has_adjacent(pos)
+      || !self.has_adjacent(pos, exclude)
       || exclude.contains(&pos)
     {
-      return PathResult::Partial(path, pos);
+      // End of the line - return path
+      return PathResult::Complete(vec![self.clone()]);
     }
     let mut index = 0;
     let mut exclude = exclude.to_owned();
-    exclude.push(pos);
-    while index < self.data.len() {
-      for i in self.get_adjacent(pos).iter() {
+    // Add this point to the exclusion list
+    exclude.insert(pos);
+    while index < self.len() {
+      for i in self.get_adjacent(pos, &exclude).iter() {
         if exclude.contains(i) {
+          // skip excluded positions
           continue;
         }
-        if let PathResult::Partial(mut p, pos) = self.follow_path(*i, &exclude)
-        {
+        let mut i = *i;
+        loop {
+          match self.follow_path(i, &exclude) {
+            PathResult::Partial(mut p, pos) => {
+              path.append(&mut p);
+              i = pos;
+            }
+            PathResult::Complete(mut p) => {
+              // got to the end of a path - add it to the total paths
+              paths.append(&mut p);
+              break;
+            }
+          }
+        }
+        if let PathResult::Partial(mut p, pos) = self.follow_path(i, &exclude) {
           path.append(&mut p);
-          exclude.push(pos);
+          exclude.insert(pos);
         }
       }
       paths.push(path.clone());
@@ -245,14 +286,14 @@ impl Path {
   }
 
   pub fn get_adjacent_paths(&self) -> Vec<Path> {
-    let exclude = vec![];
-    if let PathResult::Complete(paths) =
-      self.follow_path(self.data[0], &exclude)
-    {
-      paths
-    } else {
-      panic!("Path calculation does not complete")
+    let exclude = HashSet::new();
+    let mut paths = vec![];
+    for pos in self.iter() {
+      if let PathResult::Complete(mut p) = self.follow_path(*pos, &exclude) {
+        paths.append(&mut p)
+      }
     }
+    paths
   }
 
   pub fn get_longest_path(&self) -> Option<Path> {
@@ -268,13 +309,13 @@ impl Path {
     longest
   }
 
-  pub fn has_adjacent(&self, pos: Pos) -> bool {
-    self.get_adjacent(pos).len() != 0
+  pub fn has_adjacent(&self, pos: Pos, exclude: &HashSet<Pos>) -> bool {
+    self.get_adjacent(pos, exclude).len() != 0
   }
 }
 
 impl std::ops::Deref for Path {
-  type Target = Vec<Pos>;
+  type Target = HashSet<Pos>;
 
   fn deref(&self) -> &Self::Target {
     &self.data
@@ -290,7 +331,7 @@ impl std::ops::DerefMut for Path {
 impl std::ops::AddAssign for Path {
   fn add_assign(&mut self, rhs: Self) {
     for pos in rhs.data {
-      self.data.push(pos);
+      self.data.insert(pos);
     }
   }
 }
